@@ -9,6 +9,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
+
 namespace BachataEvents.Infrastructure.Repositories;
 
 public sealed class AuthService : IAuthService
