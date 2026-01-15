@@ -1,3 +1,4 @@
+using BachataEvents.Application.Common;
 using BachataEvents.Application.Festivals;
 using FluentValidation;
 
@@ -49,6 +50,16 @@ public sealed class FestivalQueryValidator : AbstractValidator<FestivalQuery>
     {
         RuleFor(x => x.Country).MaximumLength(100);
         RuleFor(x => x.Q).MaximumLength(200);
+
+        RuleFor(x => x.Page)
+            .GreaterThanOrEqualTo(1)
+            .When(x => x.Page.HasValue)
+            .WithMessage("page must be >= 1.");
+
+        RuleFor(x => x.PageSize)
+            .InclusiveBetween(1, Pagination.MaxPageSize)
+            .When(x => x.PageSize.HasValue)
+            .WithMessage($"pageSize must be between 1 and {Pagination.MaxPageSize}.");
 
         When(x => x.StartDate.HasValue && x.EndDate.HasValue, () =>
         {
