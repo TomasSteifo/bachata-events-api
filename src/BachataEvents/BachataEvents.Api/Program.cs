@@ -1,7 +1,12 @@
+using BachataEvents.Application.Validation;
+using FluentValidation;
+
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 builder.Services.AddControllers();
+builder.Services.AddValidatorsFromAssemblyContaining<FestivalQueryValidator>();
+
 
 // Swagger (OpenAPI) for .NET 8
 builder.Services.AddEndpointsApiExplorer();
