@@ -1,0 +1,70 @@
+name: Build and deploy ASP.NET Core app to Azure Web App - bachataevents-api-se
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+env:
+  WorkingDirectory: src/BachataEvents
+  BuildConfiguration: Release
+  PublishDirectory: ${{ github.workspace }}/publish
+
+jobs:
+  build:
+    runs-on: windows-latest
+    permissions:
+      contents: read
+
+    defaults:
+      run:
+        working-directory: ${{ env.WorkingDirectory }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.x"
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Build application
+        run: dotnet build --configuration ${{ env.BuildConfiguration }} --no-restore
+
+      # Optional: Keep this if you have tests
+      - name: Run tests
+        run: dotnet test --configuration ${{ env.BuildConfiguration }} --no-build
+
+      - name: Publish application
+        run: dotnet publish --configuration ${{ env.BuildConfiguration }} --no-build --output "${{ env.PublishDirectory }}"
+
+      - name: Upload published artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: app
+          path: ${{ env.PublishDirectory }}
+
+  deploy:
+    runs-on: windows-latest
+    needs: build
+    permissions:
+      contents: read
+
+    steps:
+      - name: Download published artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: app
+          path: ./app
+
+      - name: Deploy to Azure Web App (Publish Profile)
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: "bachataevents-api-se"
+          publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
+          package: ./app
