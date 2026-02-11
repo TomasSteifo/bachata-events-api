@@ -93,55 +93,87 @@ public sealed class AuthService : IAuthService
         }
     }
 
-    public async Task<AuthResponse> LoginAsync(LoginRequest request, CancellationToken ct)
+public async Task<AuthResponse> LoginAsync(LoginRequest request, CancellationToken ct)
+{
+    var user = await _userManager.FindByEmailAsync(request.Email);
+    if (user is null)
     {
-        var user = await _userManager.FindByEmailAsync(request.Email);
-        if (user is null)
-            throw new UnauthorizedException("Invalid credentials.");
-
-        var result = await _signInManager.CheckPasswordSignInAsync(user, request.Password, lockoutOnFailure: true);
-        if (!result.Succeeded)
-            throw new UnauthorizedException("Invalid credentials.");
-
-        var roles = await _userManager.GetRolesAsync(user);
-        var role = roles.SingleOrDefault() ?? AppRoles.User;
-
-        var organizerProfileId = await _db.OrganizerProfiles
-            .Where(x => x.UserId == user.Id)
-            .Select(x => (Guid?)x.Id)
-            .SingleOrDefaultAsync(ct);
-
-        var token = _jwt.CreateToken(user, role, organizerProfileId, _jwtOptions);
-
-        return new AuthResponse(
-            Token: token,
-            UserId: user.Id,
-            Email: user.Email ?? request.Email,
-            Role: role,
-            OrganizerProfileId: organizerProfileId
-        );
+        throw new UnauthorizedException("Invalid credentials.");
     }
 
-    public async Task<MeResponse> MeAsync(string userId, CancellationToken ct)
+    var signInResult = await _signInManager.CheckPasswordSignInAsync(
+        user,
+        request.Password,
+        lockoutOnFailure: true);
+
+    if (!signInResult.Succeeded)
     {
-        var user = await _userManager.FindByIdAsync(userId);
-        if (user is null)
-            throw new UnauthorizedException("User not found.");
-
-        var roles = await _userManager.GetRolesAsync(user);
-        var role = roles.SingleOrDefault() ?? AppRoles.User;
-
-        var organizerProfileId = await _db.OrganizerProfiles
-            .Where(x => x.UserId == user.Id)
-            .Select(x => (Guid?)x.Id)
-            .SingleOrDefaultAsync(ct);
-
-        return new MeResponse(user.Id, user.Email ?? "", role, organizerProfileId);
+        throw new UnauthorizedException("Invalid credentials.");
     }
 
-    private async Task EnsureRoleAsync(string roleName)
+    var roles = await _userManager.GetRolesAsync(user);
+
+    // FirstOrDefault is safer than SingleOrDefault because a user can accidentally have multiple roles.
+    var role = roles.FirstOrDefault() ?? AppRoles.User;
+
+    Guid? organizerProfileId = null;
+
+    // Only query organizer profile if the user is an organizer.
+    if (string.Equals(role, AppRoles.Organizer, StringComparison.Ordinal))
     {
-        if (await _roleManager.RoleExistsAsync(roleName)) return;
-        await _roleManager.CreateAsync(new IdentityRole(roleName));
+        organizerProfileId = await _db.OrganizerProfiles
+            .AsNoTracking()
+            .Where(organizerProfile => organizerProfile.UserId == user.Id)
+            .Select(organizerProfile => (Guid?)organizerProfile.Id)
+            .FirstOrDefaultAsync(ct);
     }
+
+    var token = _jwt.CreateToken(user, role, organizerProfileId, _jwtOptions);
+
+    return new AuthResponse(
+        Token: token,
+        UserId: user.Id,
+        Email: user.Email ?? request.Email,
+        Role: role,
+        OrganizerProfileId: organizerProfileId
+    );
+}
+
+
+public async Task<MeResponse> MeAsync(string userId, CancellationToken ct)
+{
+    var user = await _userManager.FindByIdAsync(userId);
+    if (user is null)
+    {
+        throw new UnauthorizedException("User not found.");
+    }
+
+    var roles = await _userManager.GetRolesAsync(user);
+    var role = roles.FirstOrDefault() ?? AppRoles.User;
+
+    Guid? organizerProfileId = null;
+
+    if (string.Equals(role, AppRoles.Organizer, StringComparison.Ordinal))
+    {
+        organizerProfileId = await _db.OrganizerProfiles
+            .AsNoTracking()
+            .Where(organizerProfile => organizerProfile.UserId == user.Id)
+            .Select(organizerProfile => (Guid?)organizerProfile.Id)
+            .FirstOrDefaultAsync(ct);
+    }
+
+    return new MeResponse(user.Id, user.Email ?? string.Empty, role, organizerProfileId);
+}
+
+private async Task EnsureRoleAsync(string roleName)
+{
+    var roleExists = await _roleManager.RoleExistsAsync(roleName);
+    if (roleExists)
+    {
+        return;
+    }
+
+    await _roleManager.CreateAsync(new IdentityRole(roleName));
+}
+
 }
