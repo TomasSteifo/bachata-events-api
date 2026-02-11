@@ -13,67 +13,87 @@ namespace BachataEvents.Api.Controllers;
 [Route("api/auth")]
 public sealed class AuthController : ControllerBase
 {
-    private readonly IAuthService _auth;
-    private readonly IValidator<RegisterRequest> _registerValidator;
-    private readonly IValidator<LoginRequest> _loginValidator;
+    private readonly IAuthService _authService;
+    private readonly IValidator<RegisterRequest> _registerRequestValidator;
+    private readonly IValidator<LoginRequest> _loginRequestValidator;
 
     public AuthController(
-        IAuthService auth,
-        IValidator<RegisterRequest> registerValidator,
-        IValidator<LoginRequest> loginValidator)
+        IAuthService authService,
+        IValidator<RegisterRequest> registerRequestValidator,
+        IValidator<LoginRequest> loginRequestValidator)
     {
-        _auth = auth;
-        _registerValidator = registerValidator;
-        _loginValidator = loginValidator;
+        _authService = authService;
+        _registerRequestValidator = registerRequestValidator;
+        _loginRequestValidator = loginRequestValidator;
     }
 
     [HttpPost("register")]
-    public async Task<IActionResult> Register([FromBody] RegisterRequest request, CancellationToken ct)
+    public async Task<IActionResult> Register([FromBody] RegisterRequest? request, CancellationToken cancellationToken)
     {
-        await _registerValidator.ValidateOrThrowAsync(request, ct);
-        await _auth.RegisterAsync(request, ct);
+        if (request is null)
+        {
+            return BadRequest(new ProblemDetails
+            {
+                Title = "Invalid request body",
+                Detail = "Request body was empty or could not be parsed as JSON.",
+                Status = StatusCodes.Status400BadRequest
+            });
+        }
+
+        await _registerRequestValidator.ValidateOrThrowAsync(request, cancellationToken);
+        await _authService.RegisterAsync(request, cancellationToken);
+
         return NoContent();
     }
 
     [HttpPost("login")]
-    public async Task<ActionResult<AuthResponse>> Login([FromBody] LoginRequest request, CancellationToken ct)
+    public async Task<ActionResult<AuthResponse>> Login([FromBody] LoginRequest? request, CancellationToken cancellationToken)
     {
-        await _loginValidator.ValidateOrThrowAsync(request, ct);
-        var result = await _auth.LoginAsync(request, ct);
+        if (request is null)
+        {
+            return BadRequest(new ProblemDetails
+            {
+                Title = "Invalid request body",
+                Detail = "Request body was empty or could not be parsed as JSON.",
+                Status = StatusCodes.Status400BadRequest
+            });
+        }
+
+        await _loginRequestValidator.ValidateOrThrowAsync(request, cancellationToken);
+
+        var result = await _authService.LoginAsync(request, cancellationToken);
         return Ok(result);
     }
 
-[Authorize]
-[HttpGet("me")]
-public ActionResult<MeResponse> Me()
-{
-    var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
-    if (string.IsNullOrWhiteSpace(userId))
+    [Authorize]
+    [HttpGet("me")]
+    public ActionResult<MeResponse> Me()
     {
-        return Unauthorized();
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (string.IsNullOrWhiteSpace(userId))
+        {
+            return Unauthorized();
+        }
+
+        var email = User.FindFirstValue(ClaimTypes.Email);
+        var role = User.FindFirstValue(ClaimTypes.Role);
+
+        var organizerProfileIdClaim = User.FindFirstValue("organizerProfileId");
+
+        Guid? organizerProfileId = null;
+        if (!string.IsNullOrWhiteSpace(organizerProfileIdClaim) &&
+            Guid.TryParse(organizerProfileIdClaim, out var parsedId))
+        {
+            organizerProfileId = parsedId;
+        }
+
+        var response = new MeResponse(
+            userId,
+            email ?? string.Empty,
+            role ?? AppRoles.User,
+            organizerProfileId
+        );
+
+        return Ok(response);
     }
-
-    var email = User.FindFirstValue(ClaimTypes.Email);
-    var role = User.FindFirstValue(ClaimTypes.Role);
-
-    // This matches the custom claim created in JwtTokenGenerator
-    var organizerProfileIdClaim = User.FindFirstValue("organizerProfileId");
-
-    Guid? organizerProfileId = null;
-    if (!string.IsNullOrWhiteSpace(organizerProfileIdClaim) &&
-        Guid.TryParse(organizerProfileIdClaim, out var parsedId))
-    {
-        organizerProfileId = parsedId;
-    }
-
-    var response = new MeResponse(
-        userId,
-        email ?? string.Empty,
-        role ?? AppRoles.User,
-        organizerProfileId
-    );
-
-    return Ok(response);
-}
-
 }
