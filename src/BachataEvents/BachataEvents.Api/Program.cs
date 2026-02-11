@@ -14,6 +14,8 @@ using BachataEvents.Api.Middleware;
 using Microsoft.OpenApi.Models;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
+using System.Text.Json;
+using Microsoft.AspNetCore.Mvc;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -35,7 +37,14 @@ builder.Host.UseSerilog((ctx, lc) =>
 builder.Services.AddApplicationInsightsTelemetry();
 
 // ---- Controllers + ProblemDetails ----
-builder.Services.AddControllers();
+builder.Services.AddControllers()
+.AddJsonOptions(jsonOptions =>
+    {
+        // Frontend sends camelCase JSON: { "email": "...", "password": "..." }
+        // This makes the API accept camelCase, and also be tolerant to casing.
+        jsonOptions.JsonSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
+        jsonOptions.JsonSerializerOptions.PropertyNameCaseInsensitive = true;
+    });
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
 {
@@ -71,10 +80,9 @@ builder.Services.AddTransient<GlobalExceptionMiddleware>();
 
 
 
-// Force consistent API behavior (we handle validation ourselves)
-builder.Services.Configure<ApiBehaviorOptions>(opt =>
+builder.Services.Configure<ApiBehaviorOptions>(apiBehaviorOptions =>
 {
-    opt.SuppressModelStateInvalidFilter = true;
+    apiBehaviorOptions.SuppressModelStateInvalidFilter = false;
 });
 
 // ---- AutoMapper ----
