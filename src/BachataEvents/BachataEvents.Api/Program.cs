@@ -12,6 +12,8 @@ using Serilog;
 using Serilog.Sinks.ApplicationInsights.TelemetryConverters;
 using BachataEvents.Api.Middleware;
 using Microsoft.OpenApi.Models;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.Extensions.DependencyInjection;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -87,6 +89,20 @@ builder.Services.AddValidatorsFromAssemblyContaining<RegisterRequestValidator>()
 // ---- Infrastructure ----
 builder.Services.AddInfrastructure(builder.Configuration);
 
+// ---- CORS ----
+// Allow the Vite development server to call the API during local development
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("FrontendCorsPolicy", corsPolicyBuilder =>
+    {
+        corsPolicyBuilder
+            .WithOrigins("http://localhost:8080","https://orange-dune-0602a7903.2.azurestaticapps.net")
+            .AllowAnyHeader()
+            .AllowAnyMethod();
+    });
+});
+
+
 // ---- JWT Auth ----
 var issuer = builder.Configuration["JWT_ISSUER"] ?? "";
 var audience = builder.Configuration["JWT_AUDIENCE"] ?? "";
@@ -126,6 +142,9 @@ app.UseMiddleware<GlobalExceptionMiddleware>();
 
 app.UseSwagger();
 app.UseSwaggerUI();
+
+// ---- CORS ----
+app.UseCors("FrontendCorsPolicy");
 
 app.UseAuthentication();
 app.UseAuthorization();
