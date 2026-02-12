@@ -110,36 +110,51 @@ builder.Services.AddCors(options =>
 });
 
 
-// ---- JWT Auth ----
-var issuer = builder.Configuration["JWT_ISSUER"] ?? "";
-var audience = builder.Configuration["JWT_AUDIENCE"] ?? "";
-var signingKey = builder.Configuration["JWT_SIGNING_KEY"] ?? "";
+// ---- JWT Auth configuration ----
+var issuer = builder.Configuration["JWT_ISSUER"];
+var audience = builder.Configuration["JWT_AUDIENCE"];
+var signingKey = builder.Configuration["JWT_SIGNING_KEY"];
 
-if (string.IsNullOrWhiteSpace(issuer) || string.IsNullOrWhiteSpace(audience) || string.IsNullOrWhiteSpace(signingKey))
+if (string.IsNullOrWhiteSpace(issuer) ||
+    string.IsNullOrWhiteSpace(audience) ||
+    string.IsNullOrWhiteSpace(signingKey))
 {
-    throw new InvalidOperationException("JWT env vars missing: JWT_ISSUER, JWT_AUDIENCE, JWT_SIGNING_KEY.");
+    // Do not log the actual values. The signing key is sensitive.
+    throw new InvalidOperationException(
+        "JWT configuration is missing. Required environment variables: JWT_ISSUER, JWT_AUDIENCE, JWT_SIGNING_KEY.");
 }
 
-builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-    .AddJwtBearer(opt =>
+builder.Services
+    .AddAuthentication(authenticationOptions =>
     {
-        opt.TokenValidationParameters = new TokenValidationParameters
+        // Ensure API challenges with JWT instead of redirecting to /Account/Login
+        authenticationOptions.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+        authenticationOptions.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+    })
+    .AddJwtBearer(jwtBearerOptions =>
+    {
+        jwtBearerOptions.TokenValidationParameters = new TokenValidationParameters
         {
             ValidateIssuer = true,
             ValidIssuer = issuer,
+
             ValidateAudience = true,
             ValidAudience = audience,
+
             ValidateIssuerSigningKey = true,
             IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(signingKey)),
+
             ValidateLifetime = true,
             ClockSkew = TimeSpan.FromSeconds(30)
         };
     });
 
-builder.Services.AddAuthorization(opt =>
+builder.Services.AddAuthorization(authorizationOptions =>
 {
-    opt.AddPolicy("OrganizerOnly", p => p.RequireRole(AppRoles.Organizer));
+    authorizationOptions.AddPolicy("OrganizerOnly", policy =>
+        policy.RequireRole(AppRoles.Organizer));
 });
+
 
 var app = builder.Build();
 
@@ -149,6 +164,8 @@ app.UseMiddleware<GlobalExceptionMiddleware>();
 
 app.UseSwagger();
 app.UseSwaggerUI();
+app.UseHttpsRedirection();
+
 
 // ---- CORS ----
 app.UseCors("FrontendCorsPolicy");
