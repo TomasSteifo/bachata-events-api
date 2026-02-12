@@ -4,6 +4,7 @@ using BachataEvents.Application.Auth;
 using BachataEvents.Application.Validation;
 using BachataEvents.Domain.Constants;
 using FluentValidation;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -27,6 +28,7 @@ public sealed class AuthController : ControllerBase
         _loginRequestValidator = loginRequestValidator;
     }
 
+    [AllowAnonymous]
     [HttpPost("register")]
     public async Task<IActionResult> Register([FromBody] RegisterRequest? request, CancellationToken cancellationToken)
     {
@@ -46,6 +48,7 @@ public sealed class AuthController : ControllerBase
         return NoContent();
     }
 
+    [AllowAnonymous]
     [HttpPost("login")]
     public async Task<ActionResult<AuthResponse>> Login([FromBody] LoginRequest? request, CancellationToken cancellationToken)
     {
@@ -61,28 +64,29 @@ public sealed class AuthController : ControllerBase
 
         await _loginRequestValidator.ValidateOrThrowAsync(request, cancellationToken);
 
-        var result = await _authService.LoginAsync(request, cancellationToken);
+        AuthResponse result = await _authService.LoginAsync(request, cancellationToken);
         return Ok(result);
     }
 
-    [Authorize]
+    // Force JWT so the API never tries cookie/Identity redirects (Account/Login)
+    [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
     [HttpGet("me")]
     public ActionResult<MeResponse> Me()
     {
-        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (string.IsNullOrWhiteSpace(userId))
         {
             return Unauthorized();
         }
 
-        var email = User.FindFirstValue(ClaimTypes.Email);
-        var role = User.FindFirstValue(ClaimTypes.Role);
+        string? email = User.FindFirstValue(ClaimTypes.Email);
+        string? role = User.FindFirstValue(ClaimTypes.Role);
 
-        var organizerProfileIdClaim = User.FindFirstValue("organizerProfileId");
+        string? organizerProfileIdClaim = User.FindFirstValue("organizerProfileId");
 
         Guid? organizerProfileId = null;
         if (!string.IsNullOrWhiteSpace(organizerProfileIdClaim) &&
-            Guid.TryParse(organizerProfileIdClaim, out var parsedId))
+            Guid.TryParse(organizerProfileIdClaim, out Guid parsedId))
         {
             organizerProfileId = parsedId;
         }
